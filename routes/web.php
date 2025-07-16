@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\MealController;
+use App\Http\Controllers\CartController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -29,7 +30,14 @@ Route::middleware(['auth'])->group(function () {
 
     // Guest Routes
     Route::middleware(['role:guest'])->group(function () {
-        Route::get('/dashboard', function () { return view('guest.dashboard'); });
+        Route::get('/dashboard', [MealController::class, 'guestDashboard'])->name('guest.dashboard');
+        
+        // Cart Routes
+        Route::get('/cart', [CartController::class, 'getCart'])->name('cart.index');
+        Route::post('/cart/add/{meal}', [CartController::class, 'addToCart'])->name('cart.add');
+        Route::delete('/cart/{cartItem}', [CartController::class, 'removeFromCart'])->name('cart.remove');
+        Route::put('/cart/{cartItem}', [CartController::class, 'updateQuantity'])->name('cart.update');
+        Route::post('/cart/placeOrder', [CartController::class, 'placeOrder']);
     });
 
     // Profile Routes

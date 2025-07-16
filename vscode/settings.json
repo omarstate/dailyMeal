@@ -1,0 +1,9 @@
+{
+    "intelephense.format.enable": true,
+    "intelephense.environment.includePaths": [
+      "vendor"
+    ],
+    "intelephense.diagnostics.enable": true,
+    "intelephense.completion.autoImport": true,
+    "intelephense.completion.imports.autoAdd": true
+  }

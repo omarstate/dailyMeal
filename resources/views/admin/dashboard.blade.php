@@ -24,6 +24,17 @@
                         <span class="text-xl font-semibold text-gray-900">Daily Meal Admin</span>
                     </div>
                 </div>
+                <a href="{{ route('logout') }}" 
+               onclick="event.preventDefault(); document.getElementById('logout-form').submit();"
+               class="flex items-center text-gray-700 hover:text-gray-900">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                </svg>
+                Logout
+            </a>
+            <form id="logout-form" action="{{ route('logout') }}" method="POST" class="hidden">
+                @csrf
+            </form>
             </div>
         </div>
     </nav>
@@ -35,7 +46,19 @@
             <a href="#" class="text-emerald-600 hover:text-emerald-800">Order as Guest</a>
         </div>
 
-        <div x-data="{ showModal: false }">
+        <div x-data="{ 
+            showModal: false,
+            showConfirmModal: false,
+            confirmAction: null,
+            confirmMessage: '',
+            confirmTitle: '',
+            showConfirmation(title, message, action) {
+                this.confirmTitle = title;
+                this.confirmMessage = message;
+                this.confirmAction = action;
+                this.showConfirmModal = true;
+            }
+        }">
             <!-- Weekly Meal Plan Header -->
             <div class="flex justify-between items-center mb-6">
                 <div class="flex items-center space-x-2">
@@ -90,7 +113,7 @@
                                 </div>
                             </div>
                             <button class="text-red-500 hover:text-red-700" 
-                                    onclick="removeMealFromDay('{{ $meal->id }}')">
+                                    @click="showConfirmation('Remove Meal', 'Are you sure you want to remove this meal from {{ $selectedDay }}?', () => removeMealFromDay('{{ $meal->id }}'))">
                                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                                 </svg>
@@ -128,7 +151,7 @@
                             </div>
                             @if(!in_array($selectedDay, $meal->assigned_days ?? []))
                                 <button class="text-emerald-500 hover:text-emerald-700"
-                                        onclick="assignMealToDay('{{ $meal->id }}', '{{ $selectedDay }}')">
+                                        @click="showConfirmation('Assign Meal', 'Are you sure you want to assign this meal to {{ $selectedDay }}?', () => assignMealToDay('{{ $meal->id }}', '{{ $selectedDay }}'))">
                                     <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                                     </svg>
@@ -229,38 +252,94 @@
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- JavaScript -->
-        <script>
-            function submitForm(event) {
-                const form = event.target;
-                const formData = new FormData(form);
-                const data = {
-                    name: formData.get('name'),
-                    description: formData.get('description'),
-                    type: formData.get('type'),
-                    price: parseFloat(formData.get('price'))
-                };
+            <!-- Confirmation Modal -->
+            <div x-show="showConfirmModal"
+                 x-cloak
+                 class="fixed inset-0 z-50 overflow-y-auto">
+                
+                <!-- Background overlay -->
+                <div class="fixed inset-0 bg-black bg-opacity-50"
+                     x-show="showConfirmModal"
+                     x-transition:enter="transition ease-out duration-300"
+                     x-transition:enter-start="opacity-0"
+                     x-transition:enter-end="opacity-100"
+                     x-transition:leave="transition ease-in duration-200"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0"></div>
 
-                fetch('/meals', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                    },
-                    body: JSON.stringify(data)
-                }).then(response => {
-                    if (response.ok) {
+                <!-- Modal panel -->
+                <div class="flex min-h-screen items-center justify-center p-4">
+                    <div class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6"
+                         @click.away="showConfirmModal = false"
+                         x-show="showConfirmModal"
+                         x-transition:enter="transition ease-out duration-300"
+                         x-transition:enter-start="opacity-0 scale-95"
+                         x-transition:enter-end="opacity-100 scale-100"
+                         x-transition:leave="transition ease-in duration-200"
+                         x-transition:leave-start="opacity-100 scale-100"
+                         x-transition:leave-end="opacity-0 scale-95">
+                        
+                        <!-- Modal header -->
+                        <div class="flex items-center justify-between mb-5">
+                            <h3 class="text-xl font-semibold text-gray-900" x-text="confirmTitle">Confirm Action</h3>
+                            <button @click="showConfirmModal = false" class="text-gray-400 hover:text-gray-500">
+                                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <!-- Modal content -->
+                        <div class="mb-6">
+                            <p class="text-gray-600" x-text="confirmMessage"></p>
+                        </div>
+
+                        <!-- Modal footer -->
+                        <div class="flex justify-end space-x-3">
+                            <button @click="showConfirmModal = false"
+                                    class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
+                                Cancel
+                            </button>
+                            <button @click="confirmAction(); showConfirmModal = false"
+                                    class="px-4 py-2 bg-emerald-500 text-white rounded-md hover:bg-emerald-600">
+                                Confirm
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- JavaScript -->
+            <script>
+                function submitForm(event) {
+                    const form = event.target;
+                    const formData = new FormData(form);
+                    const data = {
+                        name: formData.get('name'),
+                        description: formData.get('description'),
+                        type: formData.get('type'),
+                        price: parseFloat(formData.get('price'))
+                    };
+
+                    fetch('/meals', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                        },
+                        body: JSON.stringify(data)
+                    })
+                    .then(response => response.json())
+                    .then(data => {
                         window.location.reload();
-                    } else {
-                        alert('Error creating meal. Please try again.');
-                    }
-                });
-            }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                    });
+                }
 
-            function assignMealToDay(mealId, day) {
-                if (confirm('Are you sure you want to assign this meal to ' + day + '?')) {
+                function assignMealToDay(mealId, day) {
                     fetch(`/meals/${mealId}/assign`, {
                         method: 'PUT',
                         headers: {
@@ -268,16 +347,17 @@
                             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
                         },
                         body: JSON.stringify({ dayOfTheWeek: day })
-                    }).then(response => {
-                        if (response.ok) {
-                            window.location.reload();
-                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        window.location.reload();
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
                     });
                 }
-            }
 
-            function removeMealFromDay(mealId) {
-                if (confirm('Are you sure you want to remove this meal from {{ $selectedDay }}?')) {
+                function removeMealFromDay(mealId) {
                     fetch(`/meals/${mealId}/remove`, {
                         method: 'PUT',
                         headers: {
@@ -285,14 +365,17 @@
                             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
                         },
                         body: JSON.stringify({ dayOfTheWeek: '{{ $selectedDay }}' })
-                    }).then(response => {
-                        if (response.ok) {
-                            window.location.reload();
-                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        window.location.reload();
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
                     });
                 }
-            }
-        </script>
+            </script>
+        </div>
     </div>
 </body>
 </html> 

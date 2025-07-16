@@ -48,6 +48,6 @@ class RegisteredUserController extends Controller
 
         Auth::login($user);
 
-        return redirect($user->role === 'admin' ? route('admin.dashboard') : route('dashboard'));
+        return redirect($user->role === 'admin' ? route('admin.dashboard') : route('guest.dashboard'));
     }
 }

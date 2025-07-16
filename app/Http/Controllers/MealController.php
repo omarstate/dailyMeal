@@ -5,13 +5,14 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreMealRequest;
 use App\Http\Requests\UpdateMealRequest;
 use App\Models\Meal;
+use App\Models\Order;
+use App\Models\CartItem;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class MealController extends Controller
 {
-    /**
-     * Display the admin dashboard with meals.
-     */
+    
     public function adminDashboard()
     {
         $selectedDay = request('day', now()->format('l')); // Default to current day
@@ -33,26 +34,53 @@ class MealController extends Controller
         ]);
     }
 
-    /**
-     * Display a listing of the resource.
-     */
+
+
+    public function guestDashboard()
+    {
+        $today = now()->format('l'); // Gets current day name (e.g., "Monday")
+        
+        // Get all meals and filter for today
+        $meals = Meal::all()->filter(function($meal) use ($today) {
+            $assignedDays = $meal->assigned_days ?? [];
+            return in_array($today, $assignedDays);
+        });
+
+        // Check if user has ordered today
+        $hasOrderedToday = Order::where('user_id', Auth::id())
+            ->whereDate('order_date', now()->toDateString())
+            ->whereNull('canceled_at')
+            ->exists();
+
+        // Get cart count
+        $cartCount = CartItem::where('user_id', Auth::id())->count();
+
+        return view('guest.dashboard', [
+            'today' => $today,
+            'meals' => $meals,
+            'hasOrderedToday' => $hasOrderedToday,
+            'cartCount' => $cartCount
+        ]);
+    }
+
+
+
+
     public function index()
     {
         $meals = Meal::all();
         return response()->json($meals);
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
+
+    
     public function create()
     {
         //
     }
 
-    /**
-     * Store a newly created meal
-     */
+
+    
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -67,44 +95,35 @@ class MealController extends Controller
 
         return response()->json($meal, 201);
     }
+    
 
-    /**
-     * Display the specified resource.
-     */
+   
     public function show(Meal $meal)
     {
         //
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
+    
     public function edit(Meal $meal)
     {
         //
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
+    
     public function update(UpdateMealRequest $request, Meal $meal)
     {
         $meal->update($request->validated());
         return response()->json($meal);
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
+  
     public function destroy(Meal $meal)
     {
         $meal->delete();
         return response()->json(null, 204);
     }
 
-    /**
-     * Assign a meal to a specific day
-     */
+   
     public function assignToDay(Request $request, Meal $meal)
     {
         $validated = $request->validate([
@@ -124,9 +143,7 @@ class MealController extends Controller
         return response()->json($meal);
     }
 
-    /**
-     * Remove a meal from a day's menu
-     */
+    
     public function removeFromDay(Request $request, Meal $meal)
     {
         $validated = $request->validate([
@@ -143,9 +160,6 @@ class MealController extends Controller
         return response()->json($meal);
     }
 
-    /**
-     * Check if a meal is assigned to a specific day
-     */
     private function isAssignedToDay($meal, $day)
     {
         $assignedDays = $meal->assigned_days ?? [];
