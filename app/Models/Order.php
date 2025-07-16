@@ -32,4 +32,38 @@ class Order extends Model
     {
         return $this->belongsTo(Meal::class);
     }
+
+    /**
+     * Check if the order can be cancelled (within 3 minutes of ordering)
+     */
+    public function canBeCancelled(): bool
+    {
+        if ($this->canceled_at !== null) {
+            return false;
+        }
+
+        // Allow cancellation within 3 minutes of creation
+        return $this->created_at->addMinutes(3)->isFuture();
+    }
+
+    /**
+     * Get the remaining time to cancel in seconds
+     */
+    public function remainingTimeToCancel(): int
+    {
+        if (!$this->canBeCancelled()) {
+            return 0;
+        }
+
+        $deadline = $this->created_at->addMinutes(3);
+        return max(0, now()->diffInSeconds($deadline));
+    }
+
+    /**
+     * Get the cancellation deadline timestamp
+     */
+    public function getCancellationDeadline(): string
+    {
+        return $this->created_at->addMinutes(3)->toIso8601String();
+    }
 }

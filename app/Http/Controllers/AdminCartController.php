@@ -11,37 +11,24 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-class CartController extends Controller
+class AdminCartController extends Controller
 {
     public function addToCart(Request $request, Meal $meal): JsonResponse
     {
         try {
             $user = auth()->guard()->user();
-            $isAdmin = $user->role === 'admin';
-
-            // Check if meal is available for today (only for guests)
-            if (!$isAdmin) {
-                $today = strtolower(Carbon::today()->format('l')); // gets day name in lowercase
-                if (empty($meal->assigned_days) || !in_array($today, array_map('strtolower', $meal->assigned_days))) {
-                    return response()->json([
-                        'message' => 'This meal is currently unavailable',
-                        'cart_count' => $this->getCartCount()
-                    ], 422);
-                }
-
-                // Check if user already has any meals in cart (only for guests)
-                if (CartItem::forCurrentUser()->exists()) {
-                    return response()->json([
-                        'message' => 'Only one meal allowed per day',
-                        'cart_count' => $this->getCartCount()
-                    ], 422);
-                }
+            
+            // Ensure user is admin
+            if ($user->role !== 'admin') {
+                return response()->json([
+                    'message' => 'Unauthorized access',
+                ], 403);
             }
 
             DB::beginTransaction();
             try {
                 $cartItem = CartItem::create([
-                    'user_id' => auth()->guard()->id(),
+                    'user_id' => $user->id,
                     'meal_id' => $meal->id
                 ]);
 
@@ -57,8 +44,8 @@ class CartController extends Controller
                 ]);
             } catch (\Exception $e) {
                 DB::rollBack();
-                Log::error('Failed to add meal to cart: ' . $e->getMessage(), [
-                    'user_id' => auth()->guard()->id(),
+                Log::error('Failed to add meal to admin cart: ' . $e->getMessage(), [
+                    'user_id' => $user->id,
                     'meal_id' => $meal->id,
                     'error' => $e->getMessage()
                 ]);
@@ -68,7 +55,7 @@ class CartController extends Controller
                 ], 500);
             }
         } catch (\Exception $e) {
-            Log::error('Unexpected error in addToCart: ' . $e->getMessage(), [
+            Log::error('Unexpected error in admin addToCart: ' . $e->getMessage(), [
                 'user_id' => auth()->guard()->id(),
                 'meal_id' => $meal->id,
                 'error' => $e->getMessage()
@@ -82,7 +69,14 @@ class CartController extends Controller
 
     public function removeFromCart(CartItem $cartItem): JsonResponse
     {
-        if ($cartItem->user_id !== auth()->guard()->id()) {
+        $user = auth()->guard()->user();
+        
+        // Ensure user is admin
+        if ($user->role !== 'admin') {
+            return response()->json(['message' => 'Unauthorized access'], 403);
+        }
+        
+        if ($cartItem->user_id !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -106,7 +100,14 @@ class CartController extends Controller
 
     public function getCart()
     {
-        $cartItems = CartItem::forCurrentUser()
+        $user = auth()->guard()->user();
+        
+        // Ensure user is admin
+        if ($user->role !== 'admin') {
+            abort(403, 'Unauthorized access');
+        }
+        
+        $cartItems = CartItem::where('user_id', $user->id)
             ->with('meal')
             ->get();
 
@@ -114,15 +115,16 @@ class CartController extends Controller
             return $item->meal->price;
         });
 
-        return view('cart.index', [
+        return view('admin.cart.index', [
             'cartItems' => $cartItems,
-            'total' => $total
+            'total' => $total,
+            'cartCount' => $this->getCartCount()
         ]);
     }
 
     private function getCartCount(): int
     {
-        return CartItem::forCurrentUser()
+        return CartItem::where('user_id', auth()->guard()->id())
             ->toBase()
             ->count();
     }
@@ -131,26 +133,18 @@ class CartController extends Controller
     {
         $user = auth()->guard()->user();
         $today = Carbon::today();
-        $isAdmin = $user->role === 'admin';
+        
+        // Ensure user is admin
+        if ($user->role !== 'admin') {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Unauthorized access'], 403);
+            }
+            abort(403, 'Unauthorized access');
+        }
 
         try {
-            // Check if user already ordered today (only for guests)
-            if (!$isAdmin) {
-                $alreadyOrdered = Order::where('user_id', $user->id)
-                    ->whereDate('order_date', $today)
-                    ->whereNull('canceled_at')
-                    ->exists();
-
-                if ($alreadyOrdered) {
-                    if ($request->wantsJson()) {
-                        return response()->json(['error' => 'You already placed an order today.'], 422);
-                    }
-                    return redirect()->back()->with('error', 'You already placed an order today.');
-                }
-            }
-
-            // Get cart items (multiple for admin, single for guest)
-            $cartItems = CartItem::forCurrentUser()->get();
+            // Get cart items
+            $cartItems = CartItem::where('user_id', $user->id)->get();
 
             if ($cartItems->isEmpty()) {
                 if ($request->wantsJson()) {
@@ -163,18 +157,6 @@ class CartController extends Controller
             DB::beginTransaction();
             try {
                 foreach ($cartItems as $cartItem) {
-                    // Check if meal is still available (only for guests)
-                    if (!$isAdmin) {
-                        $meal = Meal::find($cartItem->meal_id);
-                        $todayName = strtolower($today->format('l'));
-                        if (!$meal || empty($meal->assigned_days) || !in_array($todayName, array_map('strtolower', $meal->assigned_days))) {
-                            if ($request->wantsJson()) {
-                                return response()->json(['error' => 'Sorry, this meal is no longer available.'], 422);
-                            }
-                            return redirect()->back()->with('error', 'Sorry, this meal is no longer available.');
-                        }
-                    }
-
                     // Create the order
                     Order::create([
                         'user_id' => $user->id,
@@ -194,7 +176,7 @@ class CartController extends Controller
                         'cart_count' => 0
                     ]);
                 }
-                return redirect()->route('cart.index')->with('success', 'Your meal(s) have been ordered!');
+                return redirect()->route('admin.order-meals')->with('success', 'Your meal(s) have been ordered!');
 
             } catch (\Exception $e) {
                 DB::rollBack();
@@ -202,7 +184,7 @@ class CartController extends Controller
             }
 
         } catch (\Exception $e) {
-            \Log::error('Order placement failed: ' . $e->getMessage());
+            \Log::error('Admin order placement failed: ' . $e->getMessage());
             if ($request->wantsJson()) {
                 return response()->json(['error' => 'Sorry, there was a problem placing your order. Please try again.'], 500);
             }

@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\CartItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 
 class MealController extends Controller
 {
@@ -34,20 +35,39 @@ class MealController extends Controller
         ]);
     }
 
+    public function adminOrderMeals()
+    {
+        // Get all meals
+        $allMeals = Meal::all();
+        
+        // Get cart count for admin user
+        $cartCount = CartItem::where('user_id', Auth::id())->count();
+        
+        return view('admin.order-meals', [
+            'meals' => $allMeals,
+            'cartCount' => $cartCount
+        ]);
+    }
+
 
 
     public function guestDashboard()
     {
+        $user = Auth::user();
+        $isAdmin = $user->role === 'admin';
         $today = now()->format('l'); // Gets current day name (e.g., "Monday")
         
-        // Get all meals and filter for today
-        $meals = Meal::all()->filter(function($meal) use ($today) {
+        // Get all meals
+        $allMeals = Meal::all();
+        
+        // Filter meals for today's view (for guests only)
+        $todayMeals = $isAdmin ? $allMeals : $allMeals->filter(function($meal) use ($today) {
             $assignedDays = $meal->assigned_days ?? [];
             return in_array($today, $assignedDays);
         });
 
-        // Check if user has ordered today
-        $hasOrderedToday = Order::where('user_id', Auth::id())
+        // Check if user has ordered today (for guests only)
+        $hasOrderedToday = !$isAdmin && Order::where('user_id', Auth::id())
             ->whereDate('order_date', now()->toDateString())
             ->whereNull('canceled_at')
             ->exists();
@@ -57,9 +77,11 @@ class MealController extends Controller
 
         return view('guest.dashboard', [
             'today' => $today,
-            'meals' => $meals,
+            'meals' => $todayMeals,
+            'allMeals' => $allMeals,
             'hasOrderedToday' => $hasOrderedToday,
-            'cartCount' => $cartCount
+            'cartCount' => $cartCount,
+            'isAdmin' => $isAdmin
         ]);
     }
 
@@ -87,7 +109,8 @@ class MealController extends Controller
             'name' => 'required|string|max:255',
             'description' => 'required|string',
             'type' => 'required|in:main,salad,dessert',
-            'price' => 'required|numeric|min:0'
+            'price' => 'required|numeric|min:0',
+            'image_url' => 'nullable|url|max:2048'
         ]);
 
         $validated['assigned_days'] = [];
@@ -112,7 +135,8 @@ class MealController extends Controller
     
     public function update(UpdateMealRequest $request, Meal $meal)
     {
-        $meal->update($request->validated());
+        $validated = $request->validated();
+        $meal->update($validated);
         return response()->json($meal);
     }
 
